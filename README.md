@@ -22,6 +22,99 @@ Your final app should:
 - Display the plan clearly (and ideally explain the reasoning)
 - Include tests for the most important scheduling behaviors
 
+## System Design
+
+### Core User Actions
+
+- Enter and manage basic owner and pet information so the app can personalize the plan around the pet's needs and the owner's preferences.
+- Create and manage pet care tasks such as walks, feeding, medication, grooming, and enrichment, including details like duration and priority.
+- Generate and review a daily care plan that organizes those tasks into a realistic schedule and explains why certain tasks were selected or ordered the way they were.
+
+### Mermaid Class Diagram
+
+```mermaid
+classDiagram
+    class Owner {
+        +String name
+        +int available_minutes
+        +String preferences
+        +String notes
+        +update_preferences()
+        +set_available_time()
+        +view_daily_plan()
+    }
+
+    class Pet {
+        +String name
+        +String species
+        +int age
+        +String health_notes
+        +String energy_level
+        +add_health_note()
+        +update_profile()
+        +get_care_summary()
+    }
+
+    class CareTask {
+        +String title
+        +String category
+        +int duration_minutes
+        +String priority
+        +String due_time
+        +bool is_required
+        +String notes
+        +mark_complete()
+        +edit_task()
+        +is_high_priority()
+        +fits_time_available()
+    }
+
+    class DailyPlan {
+        +String date
+        +List selected_tasks
+        +int total_minutes
+        +List explanations
+        +List unscheduled_tasks
+        +add_task()
+        +remove_task()
+        +calculate_total_time()
+        +generate_summary()
+        +explain_choices()
+    }
+
+    class Scheduler {
+        +Owner owner
+        +Pet pet
+        +List all_tasks
+        +int time_limit
+        +String rules
+        +generate_plan()
+        +sort_tasks_by_priority()
+        +filter_tasks_by_constraints()
+        +assign_times()
+        +resolve_conflicts()
+    }
+
+    class ScheduleEntry {
+        +CareTask task
+        +String start_time
+        +String end_time
+        +String reason
+        +format_for_display()
+        +overlaps_with()
+    }
+
+    Owner --> Pet : cares for
+    Owner --> DailyPlan : reviews
+    Pet --> CareTask : needs
+    Scheduler --> Owner : uses constraints from
+    Scheduler --> Pet : plans for
+    Scheduler --> CareTask : schedules
+    Scheduler --> DailyPlan : generates
+    DailyPlan --> ScheduleEntry : contains
+    ScheduleEntry --> CareTask : represents
+```
+
 ## Getting started
 
 ### Setup
