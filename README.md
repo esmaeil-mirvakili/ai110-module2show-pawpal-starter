@@ -50,9 +50,11 @@ classDiagram
         +int age
         +String health_notes
         +String energy_level
+        +List tasks
         +add_health_note()
         +update_profile()
         +get_care_summary()
+        +add_task()
     }
 
     class CareTask {
@@ -63,10 +65,14 @@ classDiagram
         +String due_time
         +bool is_required
         +String notes
+        +String recurrence
+        +String occurrence_date
+        +bool completed
         +mark_complete()
         +edit_task()
         +is_high_priority()
         +fits_time_available()
+        +create_next_occurrence()
     }
 
     class DailyPlan {
@@ -90,9 +96,13 @@ classDiagram
         +String rules
         +generate_plan()
         +sort_tasks_by_priority()
+        +sort_by_time()
         +filter_tasks_by_constraints()
+        +filter_tasks()
+        +complete_task()
         +assign_times()
         +resolve_conflicts()
+        +detect_conflicts()
     }
 
     class ScheduleEntry {
@@ -111,6 +121,7 @@ classDiagram
     Scheduler --> Pet : plans for
     Scheduler --> CareTask : schedules
     Scheduler --> DailyPlan : generates
+    Scheduler --> ScheduleEntry : checks
     DailyPlan --> ScheduleEntry : contains
     ScheduleEntry --> CareTask : represents
 ```
@@ -129,6 +140,20 @@ classDiagram
 - Daily and weekly recurring tasks automatically create the next occurrence when completed.
 - The scheduler can detect overlapping tasks and return warning messages instead of crashing.
 - The terminal demo now shows sorted tasks, filtered task views, and conflict warnings.
+
+## Features
+
+- Sorting by time so tasks can be viewed in chronological order.
+- Priority-based scheduling that favors required and higher-priority tasks.
+- Time-limit filtering so the schedule only includes tasks that fit in the owner's available minutes.
+- Conflict warnings for overlapping task times instead of application crashes.
+- Daily and weekly recurrence that automatically creates the next task instance when completed.
+- Filtering by completion status or pet name for easier task review.
+- Schedule explanations that describe why each task was selected.
+
+## 📸 Demo
+
+![PawPal+ demo](screenshot.png)
 
 ## Testing PawPal+
 

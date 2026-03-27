@@ -2,7 +2,7 @@ from datetime import time
 
 import streamlit as st
 
-from pawpal_system import CareTask, Owner, Pet, Scheduler
+from pawpal_system import CareTask, Owner, Pet, ScheduleEntry, Scheduler
 
 
 def initialize_state() -> None:
@@ -61,9 +61,40 @@ def task_rows(tasks: list[CareTask]) -> list[dict[str, object]]:
             "due_time": task.due_time,
             "required": task.is_required,
             "completed": task.completed,
+            "recurrence": task.recurrence,
         }
         for task in tasks
     ]
+
+
+def schedule_rows(plan_entries: list[ScheduleEntry]) -> list[dict[str, object]]:
+    """Convert scheduled entries into rows for display."""
+    return [
+        {
+            "start_time": entry.start_time,
+            "end_time": entry.end_time,
+            "task": entry.task.title,
+            "category": entry.task.category,
+            "priority": entry.task.priority,
+            "reason": entry.reason,
+        }
+        for entry in plan_entries
+    ]
+
+
+def build_requested_entries(tasks: list[CareTask]) -> list[ScheduleEntry]:
+    """Build entries from requested task times for conflict checks."""
+    requested_entries: list[ScheduleEntry] = []
+    for task in tasks:
+        if not task.due_time:
+            continue
+        start_hour, start_minute = map(int, task.due_time.split(":"))
+        end_total_minutes = start_hour * 60 + start_minute + task.duration_minutes
+        end_time = f"{end_total_minutes // 60:02d}:{end_total_minutes % 60:02d}"
+        requested_entries.append(
+            ScheduleEntry(task, task.due_time, end_time, reason="Requested time slot")
+        )
+    return requested_entries
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -179,8 +210,44 @@ if st.button("Add task"):
         st.error(str(exc))
 
 if st.session_state.pet.tasks:
+    scheduler = Scheduler(
+        st.session_state.owner,
+        st.session_state.pet,
+        st.session_state.pet.tasks,
+    )
+    requested_entries = build_requested_entries(st.session_state.pet.tasks)
+    conflict_warnings = scheduler.detect_conflicts(entries=requested_entries)
+
     st.write("Current tasks:")
-    st.table(task_rows(st.session_state.pet.tasks))
+    overview_col, sorted_col = st.columns(2)
+    with overview_col:
+        st.markdown("### All tasks")
+        st.table(task_rows(st.session_state.pet.tasks))
+    with sorted_col:
+        st.markdown("### Sorted by time")
+        st.table(task_rows(scheduler.sort_by_time()))
+
+    open_col, completed_col = st.columns(2)
+    with open_col:
+        st.markdown("### Open tasks")
+        open_tasks = scheduler.filter_tasks(completed=False)
+        if open_tasks:
+            st.table(task_rows(open_tasks))
+        else:
+            st.success("All current tasks are complete.")
+    with completed_col:
+        st.markdown("### Completed tasks")
+        completed_tasks = scheduler.filter_tasks(completed=True)
+        if completed_tasks:
+            st.table(task_rows(completed_tasks))
+        else:
+            st.info("No completed tasks yet.")
+
+    if conflict_warnings:
+        for warning in conflict_warnings:
+            st.warning(warning)
+    else:
+        st.success("No scheduling conflicts found in the requested task times.")
 else:
     st.info("No tasks yet. Add one above.")
 
@@ -211,7 +278,12 @@ if st.button("Generate schedule"):
 
 plan = st.session_state.daily_plan
 if plan is not None:
-    st.text(st.session_state.owner.view_daily_plan(plan))
+    st.success("Daily schedule generated.")
+    st.table(schedule_rows(plan.selected_tasks))
+
+    if plan.unscheduled_tasks:
+        st.markdown("### Unscheduled tasks")
+        st.table(task_rows(plan.unscheduled_tasks))
 
     explanations = plan.explain_choices()
     if explanations:
