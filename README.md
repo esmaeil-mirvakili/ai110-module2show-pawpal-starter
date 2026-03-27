@@ -123,6 +123,13 @@ classDiagram
 - `main.py` provides a terminal demo that creates one owner, two pets, several timed tasks, and prints today's schedule.
 - `tests/test_pawpal.py` includes simple tests for task completion and adding a task to a pet.
 
+## Smarter Scheduling
+
+- Tasks can be sorted by time and filtered by completion status or pet name.
+- Daily and weekly recurring tasks automatically create the next occurrence when completed.
+- The scheduler can detect overlapping tasks and return warning messages instead of crashing.
+- The terminal demo now shows sorted tasks, filtered task views, and conflict warnings.
+
 ## Getting started
 
 ### Setup

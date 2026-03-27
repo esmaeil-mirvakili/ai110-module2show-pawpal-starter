@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 
 PRIORITY_RANK = {"high": 0, "medium": 1, "low": 2}
+RECURRENCE_OPTIONS = {"none", "daily", "weekly"}
 DEFAULT_START_TIME = "08:00"
 
 
@@ -29,6 +30,14 @@ def _format_minutes(total_minutes: int) -> str:
     """Convert total minutes into an HH:MM time string."""
     hours, minutes = divmod(total_minutes, 60)
     return f"{hours:02d}:{minutes:02d}"
+
+
+def _normalize_recurrence(recurrence: str) -> str:
+    """Return a validated lowercase recurrence string."""
+    normalized = recurrence.strip().lower()
+    if normalized not in RECURRENCE_OPTIONS:
+        raise ValueError("recurrence must be 'none', 'daily', or 'weekly'")
+    return normalized
 
 
 class Owner:
@@ -132,11 +141,15 @@ class CareTask:
         due_time: str = "",
         is_required: bool = True,
         notes: str = "",
+        recurrence: str = "none",
+        occurrence_date: Optional[str] = None,
     ) -> None:
         if duration_minutes <= 0:
             raise ValueError("duration_minutes must be greater than zero")
         if due_time:
             _parse_time_to_minutes(due_time)
+        if occurrence_date:
+            date.fromisoformat(occurrence_date)
         self.title = title
         self.category = category
         self.duration_minutes = duration_minutes
@@ -144,11 +157,17 @@ class CareTask:
         self.due_time = due_time
         self.is_required = is_required
         self.notes = notes
+        self.recurrence = _normalize_recurrence(recurrence)
+        self.occurrence_date = occurrence_date or date.today().isoformat()
         self.completed = False
 
-    def mark_complete(self) -> None:
-        """Mark the task as completed."""
+    def mark_complete(self, task_list: Optional[list[CareTask]] = None) -> Optional[CareTask]:
+        """Mark the task complete and create the next recurring task if needed."""
         self.completed = True
+        next_task = self.create_next_occurrence()
+        if next_task is not None and task_list is not None:
+            task_list.append(next_task)
+        return next_task
 
     def edit_task(
         self,
@@ -159,6 +178,8 @@ class CareTask:
         due_time: Optional[str] = None,
         is_required: Optional[bool] = None,
         notes: Optional[str] = None,
+        recurrence: Optional[str] = None,
+        occurrence_date: Optional[str] = None,
     ) -> None:
         """Update any editable fields on the task."""
         if title is not None:
@@ -179,6 +200,11 @@ class CareTask:
             self.is_required = is_required
         if notes is not None:
             self.notes = notes
+        if recurrence is not None:
+            self.recurrence = _normalize_recurrence(recurrence)
+        if occurrence_date is not None:
+            date.fromisoformat(occurrence_date)
+            self.occurrence_date = occurrence_date
 
     def is_high_priority(self) -> bool:
         """Return whether the task has high priority."""
@@ -187,6 +213,29 @@ class CareTask:
     def fits_time_available(self, available_minutes: int) -> bool:
         """Return whether the task fits within the remaining time."""
         return self.duration_minutes <= available_minutes
+
+    def create_next_occurrence(self) -> Optional[CareTask]:
+        """Create the next task instance for daily or weekly recurring tasks."""
+        if self.recurrence == "none":
+            return None
+
+        current_date = date.fromisoformat(self.occurrence_date)
+        if self.recurrence == "daily":
+            next_date = current_date + timedelta(days=1)
+        else:
+            next_date = current_date + timedelta(weeks=1)
+
+        return CareTask(
+            title=self.title,
+            category=self.category,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            due_time=self.due_time,
+            is_required=self.is_required,
+            notes=self.notes,
+            recurrence=self.recurrence,
+            occurrence_date=next_date.isoformat(),
+        )
 
 
 class ScheduleEntry:
@@ -300,16 +349,9 @@ class Scheduler:
 
     def generate_plan(self) -> DailyPlan:
         """Create a daily plan from the current owner, pet, and tasks."""
-        selected_tasks = self.filter_tasks_by_constraints()
+        selected_tasks, unscheduled_tasks = self.filter_tasks_by_constraints()
         entries = self.assign_times(selected_tasks)
         resolved_entries = self.resolve_conflicts(entries)
-
-        scheduled_tasks = {id(entry.task) for entry in resolved_entries}
-        unscheduled_tasks = [
-            task
-            for task in self.sort_tasks_by_priority()
-            if not task.completed and id(task) not in scheduled_tasks
-        ]
 
         explanations = [entry.reason for entry in resolved_entries if entry.reason]
         plan = DailyPlan(
@@ -334,10 +376,22 @@ class Scheduler:
             ),
         )
 
-    def filter_tasks_by_constraints(self) -> list[CareTask]:
-        """Select tasks that fit within the scheduler's time limit."""
+    def sort_by_time(self, tasks: Optional[list[CareTask]] = None) -> list[CareTask]:
+        """Return tasks ordered by due time, with untimed tasks last."""
+        tasks_to_sort = self.all_tasks if tasks is None else tasks
+        return sorted(
+            tasks_to_sort,
+            key=lambda task: (
+                _parse_time_to_minutes(task.due_time) if task.due_time else 24 * 60,
+                task.title.lower(),
+            ),
+        )
+
+    def filter_tasks_by_constraints(self) -> tuple[list[CareTask], list[CareTask]]:
+        """Return scheduled and unscheduled tasks based on the time limit."""
         remaining_minutes = self.time_limit
         selected_tasks: list[CareTask] = []
+        unscheduled_tasks: list[CareTask] = []
 
         for task in self.sort_tasks_by_priority():
             if task.completed:
@@ -345,8 +399,29 @@ class Scheduler:
             if task.fits_time_available(remaining_minutes):
                 selected_tasks.append(task)
                 remaining_minutes -= task.duration_minutes
+            else:
+                unscheduled_tasks.append(task)
 
-        return selected_tasks
+        return selected_tasks, unscheduled_tasks
+
+    def filter_tasks(
+        self,
+        completed: Optional[bool] = None,
+        pet_name: Optional[str] = None,
+    ) -> list[CareTask]:
+        """Return tasks filtered by completion status and optionally pet name."""
+        if pet_name is not None and pet_name.strip().lower() != self.pet.name.strip().lower():
+            return []
+
+        filtered_tasks = self.all_tasks
+        if completed is not None:
+            filtered_tasks = [task for task in filtered_tasks if task.completed is completed]
+
+        return filtered_tasks
+
+    def complete_task(self, task: CareTask) -> Optional[CareTask]:
+        """Mark a task complete and append its next recurring instance if needed."""
+        return task.mark_complete(self.all_tasks)
 
     def assign_times(self, tasks: list[CareTask]) -> list[ScheduleEntry]:
         """Assign simple start and end times to selected tasks."""
@@ -402,6 +477,41 @@ class Scheduler:
 
         return resolved_entries
 
+    def detect_conflicts(
+        self,
+        entries: Optional[list[ScheduleEntry]] = None,
+        other_schedules: Optional[list[tuple[str, list[ScheduleEntry]]]] = None,
+    ) -> list[str]:
+        """Return warning messages for overlapping tasks in one or more schedules."""
+        local_entries = entries if entries is not None else self.generate_plan().selected_tasks
+        warnings: list[str] = []
+
+        for index, entry in enumerate(local_entries):
+            for other_entry in local_entries[index + 1 :]:
+                if entry.overlaps_with(other_entry):
+                    overlap_start, overlap_end = self._overlap_window(entry, other_entry)
+                    warnings.append(
+                        f"Warning: {self.pet.name} has overlapping tasks "
+                        f"'{entry.task.title}' and '{other_entry.task.title}' "
+                        f"from {overlap_start} to {overlap_end}."
+                    )
+
+        if other_schedules is None:
+            return warnings
+
+        for other_pet_name, other_entries in other_schedules:
+            for entry in local_entries:
+                for other_entry in other_entries:
+                    if entry.overlaps_with(other_entry):
+                        overlap_start, overlap_end = self._overlap_window(entry, other_entry)
+                        warnings.append(
+                            f"Warning: {self.pet.name} task '{entry.task.title}' overlaps with "
+                            f"{other_pet_name} task '{other_entry.task.title}' "
+                            f"from {overlap_start} to {overlap_end}."
+                        )
+
+        return warnings
+
     def _build_reason(self, task: CareTask) -> str:
         """Build a plain-language explanation for selecting a task."""
         reasons = []
@@ -418,3 +528,15 @@ class Scheduler:
             reasons.append("matches owner preference")
 
         return f"{task.title} was selected because it is " + ", ".join(reasons) + "."
+
+    def _overlap_window(self, first: ScheduleEntry, second: ScheduleEntry) -> tuple[str, str]:
+        """Return the shared time window for two overlapping schedule entries."""
+        overlap_start = max(
+            _parse_time_to_minutes(first.start_time),
+            _parse_time_to_minutes(second.start_time),
+        )
+        overlap_end = min(
+            _parse_time_to_minutes(first.end_time),
+            _parse_time_to_minutes(second.end_time),
+        )
+        return _format_minutes(overlap_start), _format_minutes(overlap_end)
