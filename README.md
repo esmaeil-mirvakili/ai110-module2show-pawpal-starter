@@ -115,6 +115,14 @@ classDiagram
     ScheduleEntry --> CareTask : represents
 ```
 
+## Current Implementation
+
+- `pawpal_system.py` contains the core domain model: `Owner`, `Pet`, `CareTask`, `ScheduleEntry`, `DailyPlan`, and `Scheduler`.
+- The backend currently supports updating owner and pet profiles, adding pet tasks, marking tasks complete, editing task details, and generating a daily plan.
+- The scheduler orders tasks by required status, priority, and due time, fits tasks within the owner's available minutes, assigns simple time slots, and records unscheduled tasks.
+- `main.py` provides a terminal demo that creates one owner, two pets, several timed tasks, and prints today's schedule.
+- `tests/test_pawpal.py` includes simple tests for task completion and adding a task to a pet.
+
 ## Getting started
 
 ### Setup
