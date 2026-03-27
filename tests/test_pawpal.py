@@ -19,6 +19,25 @@ def test_add_task_increases_pet_task_count() -> None:
     assert len(pet.tasks) == starting_count + 1
 
 
+def test_sort_by_time_returns_tasks_in_chronological_order() -> None:
+    owner = Owner("Jordan", 120)
+    pet = Pet("Mochi", "dog", 3)
+    tasks = [
+        CareTask("Breakfast", "feeding", 10, "high", due_time="09:00"),
+        CareTask("Evening walk", "walk", 25, "medium", due_time="18:00"),
+        CareTask("Morning walk", "walk", 30, "high", due_time="08:00"),
+    ]
+    scheduler = Scheduler(owner, pet, tasks)
+
+    sorted_tasks = scheduler.sort_by_time()
+
+    assert [task.title for task in sorted_tasks] == [
+        "Morning walk",
+        "Breakfast",
+        "Evening walk",
+    ]
+
+
 def test_daily_task_completion_creates_next_occurrence() -> None:
     pet = Pet("Mochi", "dog", 3)
     task = CareTask(
@@ -39,6 +58,25 @@ def test_daily_task_completion_creates_next_occurrence() -> None:
     assert next_task.title == "Daily medication"
     assert next_task.occurrence_date == "2026-03-28"
     assert len(pet.tasks) == 2
+
+
+def test_detect_conflicts_flags_duplicate_task_times() -> None:
+    owner = Owner("Jordan", 120)
+    pet = Pet("Mochi", "dog", 3)
+    scheduler = Scheduler(owner, pet, [])
+    first_task = CareTask("Breakfast", "feeding", 10, "high", due_time="09:00")
+    second_task = CareTask("Medication", "meds", 15, "high", due_time="09:00")
+    entries = [
+        ScheduleEntry(first_task, "09:00", "09:10"),
+        ScheduleEntry(second_task, "09:00", "09:15"),
+    ]
+
+    warnings = scheduler.detect_conflicts(entries=entries)
+
+    assert len(warnings) == 1
+    assert "Breakfast" in warnings[0]
+    assert "Medication" in warnings[0]
+    assert "09:00" in warnings[0]
 
 
 def test_detect_conflicts_returns_warning_for_overlapping_pet_tasks() -> None:

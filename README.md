@@ -130,6 +130,18 @@ classDiagram
 - The scheduler can detect overlapping tasks and return warning messages instead of crashing.
 - The terminal demo now shows sorted tasks, filtered task views, and conflict warnings.
 
+## Testing PawPal+
+
+Run the test suite with:
+
+```bash
+python -m pytest
+```
+
+The current tests cover task completion, adding tasks to a pet, chronological sorting, daily recurrence, and conflict detection for both same-pet and cross-pet overlaps.
+
+Confidence Level: `★★★★☆` (4/5) based on the current passing test suite and manual terminal checks. The core scheduling behavior is working, but more edge-case coverage would improve confidence further.
+
 ## Getting started
 
 ### Setup
